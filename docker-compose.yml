@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:latest
+    container_name: fb_ads_db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:latest
+    container_name: fb_ads_redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build: ./src/backend
+    container_name: fb_ads_backend
+    depends_on:
+      - db
+      - redis
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=db;Database=${DB_NAME};Username=${DB_USER};Password=${DB_PASSWORD}"
+      ConnectionStrings__Redis: "${REDIS_URL}"
+      Facebook__AppId: "${FB_APP_ID}"
+      Facebook__AppSecret: "${FB_APP_SECRET}"
+      Facebook__AccessToken: "${FB_ACCESS_TOKEN}"
+      Facebook__AdAccountId: "${FB_AD_ACCOUNT_ID}"
+      AI__OpenAIKey: "${OPENAI_API_KEY}"
+    volumes:
+      - ./logs/backend:/app/logs
+
+  scraper:
+    build: ./src/scraper
+    container_name: fb_ads_scraper
+    depends_on:
+      - db
+    environment:
+      DB_HOST: "db"
+      DB_NAME: "${DB_NAME}"
+      DB_USER: "${DB_USER}"
+      DB_PASSWORD: "${DB_PASSWORD}"
+    volumes:
+      - ./logs/scraper:/app/logs
+
+  bot:
+    build: ./src/bot
+    container_name: fb_ads_bot
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: "redis://${REDIS_URL}"
+      TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+    volumes:
+      - ./logs/bot:/app/logs
+
+volumes:
+  postgres_data:
+  redis_data:
